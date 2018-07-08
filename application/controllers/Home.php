@@ -56,10 +56,11 @@ class Home extends CI_Controller {
     $this->cekSession();
     if($this->input->post('cek')){
       $kode = $this->input->post('kode_pesan');
-      $cek_kode = $this->home_model->checkKodeByKode($kode);
 
-      if($cek_kode->num_rows() > 0){
-        $detail = $this->home_model->getInfoPemesanan($kode);
+      $cek_kode = $this->curl->simple_post($this->API.'/konfirmasi/cekKode', array('kode' => $kode, 'identitas' => $identitas ), array(CURLOPT_BUFFERSIZE => 10));
+
+      if($cek_kode > 0){
+        $detail = json_decode($this->curl->simple_get($this->API.'/keranjang/infoPemesanan/'.$kode));
 
         $tgl = explode("-", $detail->tanggal);
         $new_tgl = "";
@@ -91,7 +92,8 @@ class Home extends CI_Controller {
         $this->session->set_flashdata('status', $detail->status);
         $this->session->set_flashdata('detail', TRUE);
 
-        $items = $this->home_model->getDetailPemesanan($kode);
+        $items = json_decode($this->curl->simple_get($this->API.'/keranjang/detailPemesanan/'.$kode));
+
         $this->session->set_flashdata('items', $items);
 
         redirect(site_url('cek'));
@@ -127,10 +129,14 @@ class Home extends CI_Controller {
     if($this->input->post('konfirmasi')){
       $kode_pesan = $this->input->post('kode_pesan');
       $identitas  = $this->input->post('identitas');
-      $cek_kode = $this->home_model->checkKode($kode_pesan, $identitas);
 
-      if($cek_kode->num_rows() > 0){
-        $pemesanan = $this->home_model->getStatusPemesananByKode($kode_pesan, $identitas);
+      $cek_kode = $this->curl->simple_post($this->API.'/konfirmasi', array('kode_pesan' => $kode_pesan, 'identitas' => $identitas ), array(CURLOPT_BUFFERSIZE => 10));
+
+      if($cek_kode > 0){
+        $pemesanan = json_decode($this->curl->simple_get($this->API.'/keranjang/cekStatus/'.$kode_pesan.'/'.$identitas));
+
+        $user_info = json_decode($this->curl->simple_get($this->API.'/keranjang/userInfo/'.$pemesanan->id_pemesan));
+
         $user_info = $this->home_model->getUserInfo($pemesanan->id_pemesan);
 
         if($pemesanan->status == 'L'){
@@ -139,7 +145,7 @@ class Home extends CI_Controller {
           $message = '<p class="alert alert-success text-center">Pemesanan <strong>'. $kode_pesan .'</strong> telah dikonfirmasi sebelumnya pada '. $date .' oleh '. $user_info->nama .'</p>';
         }
         else {
-          if($this->home_model->updateStatusPemesanan($kode_pesan))
+          if($this->curl->simple_post($this->API.'/keranjang/updateStatus', array('kode' => $kode_pesan), array(CURLOPT_BUFFERSIZE => 10)))
             $message = '<p class="alert alert-success text-center">Pemesanan <strong>'. $kode_pesan .'</strong> berhasil dikonfirmasi atas nama '. $user_info->nama .'</p>';
           else
             $message = '<p class="alert alert-danger text-center"><b>Terjadi kesalahan</b>, konfirmasi pembelian gagal.</p>';
@@ -166,13 +172,14 @@ class Home extends CI_Controller {
   public function tambah_keranjang($kode){
     $this->cekSession();
 
-    $cek_keranjang = $this->keranjang_model->checkKeranjang($kode);
-    if($cek_keranjang->num_rows() > 0){
-      if(!$this->keranjang_model->updateKeranjang($kode))
+    $cek_keranjang = json_decode($this->curl->simple_get($this->API.'/keranjang/cek/'.$kode.'/'.$this->session->userdata('id_session')));
+
+    if($cek_keranjang > 0){
+      if(!$this->curl->simple_post($this->API.'/keranjang', array('kode' => $kode, 'id' => $this->session->userdata('id_session')), array(CURLOPT_BUFFERSIZE => 10)))
         echo "Gagal menambahkan item kedalam keranjang";
     }
     else {
-      if(!$this->keranjang_model->insertKeranjang($kode))
+      if(! $this->curl->simple_put($this->API.'/keranjang', array('kode' => $kode, 'id' => $this->session->userdata('id_session')), array(CURLOPT_BUFFERSIZE => 10)))
         echo "Gagal menambahkan item kedalam keranjang";
     }
 
@@ -183,7 +190,7 @@ class Home extends CI_Controller {
     $this->cekSession();
 
     if($this->input->post('batal_beli')){
-      if(!$this->keranjang_model->deleteKeranjang())
+      if(!$this->curl->simple_delete($this->API.'/keranjang', array('id' => $this->session->userdata('id_session')), array(CURLOPT_BUFFERSIZE => 10)))
         echo "Gagal melakukan operasi pembatalan pembelian";
     }
     
@@ -192,21 +199,23 @@ class Home extends CI_Controller {
       $nama      = $this->input->post('nama');
       $identitas = $this->input->post('identitas');
 
-      $cek_identitas = $this->keranjang_model->checkIdentitas($identitas);
-      if($cek_identitas->num_rows() == 0){
-        if(!$this->keranjang_model->insertPembeli($identitas, $nama))
+      $cek_identitas = json_decode($this->curl->simple_post($this->API.'/beli/checkIdentity', array('identitas' => $identitas), array(CURLOPT_BUFFERSIZE => 10)));
+
+      if($cek_identitas == 0){
+        if(! $this->curl->simple_put($this->API.'/keranjang/insertPembeli', array('nama' => $nama, 'identitas' => $identitas), array(CURLOPT_BUFFERSIZE => 10)))
           echo "Maaf atas ketidaknyamanannya karena transaksi mengalami kegagalan. Coba beberapa saat lagi";
       }
 
-      $pembeli = $this->keranjang_model->getPembeli($identitas);
-      $kode_pesan = $this->keranjang_model->insertPemesanan($identitas);
+      $pembeli = json_decode($this->curl->simple_get($this->API.'/keranjang/pembeli/'.$identitas));
 
-      if(!$this->keranjang_model->insertDetailPemesanan($kode_pesan)){
+      $kode_pesan = $this->curl->simple_put($this->API.'/keranjang/insertPemesanan', array('identitas' => $identitas, 'id' => $this->session->userdata('id_session')), array(CURLOPT_BUFFERSIZE => 10));
+
+      if(!$this->curl->simple_put($this->API.'/keranjang/insertDetailPemesanan', array('kode_pesan' => $kode_pesan, 'id' => $this->session->userdata('id_session')), array(CURLOPT_BUFFERSIZE => 10))){
         echo "Maaf atas ketidaknyamanannya karena transaksi mengalami kegagalan. Coba beberapa saat lagi";
       }
 
       //hapus semua data yang ada di keranjang
-      $this->keranjang_model->deleteKeranjang();
+      $this->curl->simple_delete($this->API.'/keranjang', array('id' => $this->session->userdata('id_session')), array(CURLOPT_BUFFERSIZE => 10));
 
       $new_kode_pesan = "";
       foreach (str_split($kode_pesan) as $val) {
@@ -219,10 +228,12 @@ class Home extends CI_Controller {
       $this->session->set_flashdata('msg', $pesanFlash);
       redirect(site_url('beli'));
     }
+    
     else {
       $data['view_name'] = 'beli';
-      $data['keranjang'] = $this->keranjang_model->getKeranjang();
-      $data['keranjang_info'] = $this->keranjang_model->getKeranjangInfo();
+      $data['keranjang'] = json_decode($this->curl->simple_get($this->API.'/keranjang/'.$this->session->userdata('id_session')));
+      $data['keranjang_info'] = json_decode($this->curl->simple_get($this->API.'/keranjang/info/'.$this->session->userdata('id_session')));
+
       $data['message'] = $this->session->flashdata('msg');
 
       $this->load->view('home/index_view', $data);
@@ -233,9 +244,11 @@ class Home extends CI_Controller {
     $kode   = $this->input->post('kode_obat');
     $jumlah = $this->input->post('jumlah');
 
-    $this->keranjang_model->updateItemKeranjang($kode, $jumlah);
-    $subtotal = $this->keranjang_model->getKeranjangSubtotal($kode);
-    $total    = $this->keranjang_model->getKeranjangInfo();
+    $update =  $this->curl->simple_post($this->API.'/keranjang/updateItem', array('kode' => $kode, 'jumlah' => $jumlah, 'id' => $this->session->userdata('id_session')), array(CURLOPT_BUFFERSIZE => 10));
+
+    $subtotal = json_decode($this->curl->simple_get($this->API.'/keranjang/keranjangSubTotal/'.$kode.'/'.$this->session->userdata('id_session')));
+
+    $total    =  json_decode($this->curl->simple_get($this->API.'/keranjang/keranjangInfo/'.$this->session->userdata('id_session')));
 
     $data = array(
       'subtotal' => number_format($subtotal->subtotal, 0, ',', '.'),
@@ -247,9 +260,10 @@ class Home extends CI_Controller {
 
   public function del_item(){
     $kode = $this->input->post('kode_obat');
+    $id = $this->session->userdata('id_session');
 
-    if($this->keranjang_model->deleteItemKeranjang($kode)){
-      $total= $this->keranjang_model->getKeranjangInfo();
+    if($this->curl->simple_delete($this->API.'/keranjang/deleteItem/', array('kode'=>$kode, 'id'=>$id), array(CURLOPT_BUFFERSIZE => 10))){
+      $total= json_decode($this->curl->simple_get($this->API.'/keranjang/info/'.$this->session->userdata('id_session')));
       $data['status'] = true;
       $data['total']  = number_format($total->total, 0, ',', '.');
     }

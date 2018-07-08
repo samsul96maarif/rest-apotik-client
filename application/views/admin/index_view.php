@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Apotek Berkah</title>
+  <title>Jakal Apotik</title>
   <link rel="stylesheet" type="text/css" href="<?= base_url();?>assets/css/bootstrap.min.css">
   <link rel="stylesheet" type="text/css" href="<?= base_url();?>assets/css/main.css">
   <script type="text/javascript" src="<?= base_url();?>assets/js/jquery-3.2.1.min.js"></script>

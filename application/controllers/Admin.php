@@ -28,6 +28,7 @@ class Admin extends CI_Controller {
   }
 
   public function login(){
+  
     if($this->session->userdata('login_admin'))
       redirect(site_url('admin'));
 
